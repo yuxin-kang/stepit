@@ -15,16 +15,20 @@ target_sources(${PROJECT_NAME}
     PRIVATE
       src/cmd_posture_subscriber2.cpp
       src/cmd_vel_subscriber2.cpp
+      src/depth_history_source.cpp
       src/field_subscriber2.cpp
       src/heightmap_subscriber2.cpp
+      src/wbc_command_source.cpp
     PUBLIC
       FILE_SET HEADERS
       BASE_DIRS include
       FILES
         include/stepit/policy_neuro_ros2/cmd_posture_subscriber2.h
         include/stepit/policy_neuro_ros2/cmd_vel_subscriber2.h
+        include/stepit/policy_neuro_ros2/depth_history_source.h
         include/stepit/policy_neuro_ros2/field_subscriber2.h
         include/stepit/policy_neuro_ros2/heightmap_subscriber2.h
+        include/stepit/policy_neuro_ros2/wbc_command_source.h
 )
 target_link_libraries(${PROJECT_NAME} PUBLIC
     stepit_core

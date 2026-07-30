@@ -1,3 +1,7 @@
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+
 #include <stepit/robot/unitree2/joystick.h>
 
 namespace stepit {
@@ -6,6 +10,12 @@ Unitree2Joystick::Unitree2Joystick() {
   Unitree2Dds::initialize();
   sub_ = std::make_shared<u2_sdk::ChannelSubscriber<u2_msg::WirelessController_>>("rt/wirelesscontroller");
   sub_->InitChannel([this](const void *msg) { callback(static_cast<const u2_msg::WirelessController_ *>(msg)); }, 1);
+  // On G1, the physical wireless controller is carried in the HG low-state
+  // packet.  Some firmware does not publish the separate Go2-compatible
+  // rt/wirelesscontroller topic to Ethernet clients.
+  low_state_sub_ = std::make_shared<u2_sdk::ChannelSubscriber<u2_hg_msg::LowState_>>("rt/lowstate");
+  low_state_sub_->InitChannel(
+      [this](const void *msg) { lowStateCallback(static_cast<const u2_hg_msg::LowState_ *>(msg)); }, 1);
 }
 
 bool Unitree2Joystick::connected() const { return tick_ != 0; }
@@ -45,6 +55,20 @@ void Unitree2Joystick::updateState(State &state, float lx, float ly, float rx, f
 void Unitree2Joystick::callback(const u2_msg::WirelessController_ *msg) {
   std::lock_guard<std::mutex> _(mutex_);
   updateState(state_, msg->lx(), msg->ly(), msg->rx(), msg->ry(), msg->keys());
+  tick_ += 1;
+}
+
+void Unitree2Joystick::lowStateCallback(const u2_hg_msg::LowState_ *msg) {
+  const auto &payload = msg->wireless_remote();
+  RemoteData remote{};
+  std::memcpy(&remote, payload.data(), sizeof(remote));
+  if (not(std::isfinite(remote.lx) and std::isfinite(remote.ly) and std::isfinite(remote.rx) and
+          std::isfinite(remote.ry))) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> _(mutex_);
+  updateState(state_, remote.lx, remote.ly, remote.rx, remote.ry, remote.keys);
   tick_ += 1;
 }
 

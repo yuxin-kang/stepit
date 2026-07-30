@@ -42,10 +42,11 @@ standing_cfg: [
   -0.05, 0.0, 0.0, 0.35, -0.3, 0.0,
   # Waist (3 joints): yaw, roll, pitch
   0.0, 0.0, 0.0,
-  # Left arm (7 joints): shoulder_pitch, shoulder_roll, shoulder_yaw, elbow, wrist_roll, wrist_pitch, wrist_yaw
-  0.0, 0.15, 0.0, 1.2, 0.15, 0.0, 0.0,
-  # Right arm (7 joints): shoulder_pitch, shoulder_roll, shoulder_yaw, elbow, wrist_roll, wrist_pitch, wrist_yaw
-  0.0, -0.15, 0.0, 1.2, -0.15, 0.0, 0.0,
+  # Left arm (7 joints): policy-command default pose.  This matches policy.yml
+  # actuator.bias, so Ctrl+A standing and Ctrl+B policy entry share one arm home pose.
+  0.2, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0,
+  # Right arm (7 joints): mirrored policy-command default pose.
+  0.2, -0.2, 0.0, 0.0, 0.0, 0.0, 0.0,
 ]
 lying_cfg: [
   # Left leg (6 joints)
