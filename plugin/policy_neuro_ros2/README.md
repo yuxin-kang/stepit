@@ -32,7 +32,7 @@ sudo apt install ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-grid-map-ros
     - `geometry_msgs/msg/PoseStamped`,
     - `geometry_msgs/msg/PoseWithCovarianceStamped`,
     - `nav_msgs/msg/Odometry`.
-- `depth_history_source`: subscribes to a continuous `sensor_msgs/msg/Image` (`32FC1`) or `std_msgs/msg/Float32MultiArray` raw depth stream and provides `depth_history` (2304D). Each received frame is cropped, clipped, and normalized before entering the source-owned four-frame history cache. On a policy reset the cache is cleared, so the LSTM starts only after four new valid frames; output order is oldest to newest. The deployed G1 depth-student contract is raw 64x36 -> crop `(top=18, bottom=0, left=16, right=16)` -> clip `[0, 2.5]` -> normalize `[0, 1]` -> 18x32.
+- `depth_history_source`: subscribes to a continuous `sensor_msgs/msg/Image` (`32FC1`) or `std_msgs/msg/Float32MultiArray` raw depth stream and provides `depth_history` (2304D). Each received frame is cropped, clipped, and normalized before entering the source-owned four-frame history cache. The policy starts only when four valid, fresh frames have already been buffered; output order is oldest to newest. The deployed G1 depth-student contract is raw 64x36 -> crop `(top=18, bottom=0, left=16, right=16)` -> clip `[0, 2.5]` -> normalize `[0, 1]` -> 18x32.
 - `wbc_command_source`: subscribes to one 22D `std_msgs/msg/Float32MultiArray` and provides `wbc_command` in the order `[vx, vy, wz, base_height, left_pose_9d, right_pose_9d]`. Height is absolute metres and clamped to the configured `[0.3, 0.8]` range. Hand poses are pelvis/base-frame position + tangent + normal. A missing hand is exactly nine `NaN` values and holds the most recent valid target; zero poses are not used.
 
 

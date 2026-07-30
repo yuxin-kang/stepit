@@ -58,10 +58,6 @@ DepthHistorySource::DepthHistorySource(const NeuroPolicySpec &policy_spec, const
 
 bool DepthHistorySource::reset() {
   std::lock_guard<std::mutex> lock(mutex_);
-  // Keep visual and recurrent histories aligned: a newly reset LSTM must only
-  // consume frames collected after this policy activation.
-  history_.clear();
-  last_sample_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   reported_not_ready_ = false;
   reported_timeout_   = false;
   if (not readyLocked()) {
