@@ -70,6 +70,26 @@ ForwardKinematics::ForwardKinematics(const NeuroPolicySpec &policy_spec, const M
   whole_body_local_ori_id_  = registerProvision("whole_body_local_ori", 4 * num_bodies);
   whole_body_global_pos_id_ = registerProvision("whole_body_global_pos", 3 * num_bodies);
   whole_body_global_ori_id_ = registerProvision("whole_body_global_ori", 4 * num_bodies);
+
+  // The WBC teacher observes actual wrist-yaw poses, not command targets. The
+  // training representation is [position, rotated local +X, rotated local +Z]
+  // in the pelvis/base frame. Keep these optional so existing motion-tracking
+  // and student policies retain their exact current field contract.
+  const auto left_ee_frame  = config_["left_ee_frame"].as<std::string>("");
+  const auto right_ee_frame = config_["right_ee_frame"].as<std::string>("");
+  STEPIT_ASSERT(left_ee_frame.empty() == right_ee_frame.empty(),
+                "Specify both left_ee_frame and right_ee_frame for teacher current EE poses.");
+  if (not left_ee_frame.empty()) {
+    left_ee_index_  = model_.getFrameId(left_ee_frame);
+    right_ee_index_ = model_.getFrameId(right_ee_frame);
+    STEPIT_ASSERT(left_ee_index_ < static_cast<pinocchio::FrameIndex>(model_.nframes),
+                  "Left EE frame '{}' is not found in urdf '{}'.", left_ee_frame, urdf_path_);
+    STEPIT_ASSERT(right_ee_index_ < static_cast<pinocchio::FrameIndex>(model_.nframes),
+                  "Right EE frame '{}' is not found in urdf '{}'.", right_ee_frame, urdf_path_);
+    left_current_ee_pose_id_  = registerProvision("left_current_ee_pose", 9);
+    right_current_ee_pose_id_ = registerProvision("right_current_ee_pose", 9);
+    provide_current_ee_pose_  = true;
+  }
 }
 
 bool ForwardKinematics::reset() { return true; }
@@ -77,6 +97,9 @@ bool ForwardKinematics::reset() { return true; }
 bool ForwardKinematics::update(const LowState &low_state, ControlRequests &, FieldMap &context) {
   pinocchio::Model::ConfigVectorType q  = pinocchio::Model::ConfigVectorType::Zero(model_.nq);
   pinocchio::Model::TangentVectorType v = pinocchio::Model::TangentVectorType::Zero(model_.nv);
+  // The model is built with a free-flyer root. Local FK is invariant to the
+  // root pose, but its quaternion must still be a valid identity rotation.
+  q[6] = 1.0;
 
   for (std::size_t i{}; i < joint_indices_.size(); ++i) {
     const auto joint_id        = joint_indices_[i];
@@ -97,6 +120,22 @@ bool ForwardKinematics::update(const LowState &low_state, ControlRequests &, Fie
 
     Quatf quat                             = Quatf::fromMatrix(body_pose_local.rotation().cast<float>());
     whole_body_local_ori.segment(4 * i, 4) = quat.coeffs();
+  }
+
+  if (provide_current_ee_pose_) {
+    const auto write_ee_pose = [&anchor_pose](const pinocchio::SE3 &ee_pose, ArrXf &output) {
+      const auto ee_pose_local = anchor_pose.actInv(ee_pose);
+      output.resize(9);
+      output.segment<3>(0) = ee_pose_local.translation().cast<float>();
+      // LeoLab quat_to_tan_norm: tangent = R * +X, normal = R * +Z.
+      output.segment<3>(3) = ee_pose_local.rotation().col(0).cast<float>();
+      output.segment<3>(6) = ee_pose_local.rotation().col(2).cast<float>();
+    };
+    ArrXf left_current_ee_pose, right_current_ee_pose;
+    write_ee_pose(data_.oMf[left_ee_index_], left_current_ee_pose);
+    write_ee_pose(data_.oMf[right_ee_index_], right_current_ee_pose);
+    context[left_current_ee_pose_id_]  = left_current_ee_pose;
+    context[right_current_ee_pose_id_] = right_current_ee_pose;
   }
 
   ArrXf whole_body_global_pos = whole_body_local_pos;

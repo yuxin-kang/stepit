@@ -13,6 +13,7 @@ find_package(tf2_ros REQUIRED)
 stepit_add_plugin(${PROJECT_NAME})
 target_sources(${PROJECT_NAME}
     PRIVATE
+      src/base_lin_vel_source.cpp
       src/cmd_posture_subscriber2.cpp
       src/cmd_vel_subscriber2.cpp
       src/depth_history_source.cpp
@@ -23,6 +24,7 @@ target_sources(${PROJECT_NAME}
       FILE_SET HEADERS
       BASE_DIRS include
       FILES
+        include/stepit/policy_neuro_ros2/base_lin_vel_source.h
         include/stepit/policy_neuro_ros2/cmd_posture_subscriber2.h
         include/stepit/policy_neuro_ros2/cmd_vel_subscriber2.h
         include/stepit/policy_neuro_ros2/depth_history_source.h

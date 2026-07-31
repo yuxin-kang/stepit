@@ -22,7 +22,10 @@ class ForwardKinematics : public Module {
   std::vector<std::string> body_names_;
   std::vector<pinocchio::FrameIndex> body_indices_;
   pinocchio::FrameIndex anchor_index_{};
+  pinocchio::FrameIndex left_ee_index_{};
+  pinocchio::FrameIndex right_ee_index_{};
   std::vector<pinocchio::JointIndex> joint_indices_;
+  bool provide_current_ee_pose_{false};
 
   FieldId anchor_global_pos_id_{};
   FieldId anchor_global_ori_id_{};
@@ -30,6 +33,8 @@ class ForwardKinematics : public Module {
   FieldId whole_body_local_ori_id_{};
   FieldId whole_body_global_pos_id_{};
   FieldId whole_body_global_ori_id_{};
+  FieldId left_current_ee_pose_id_{};
+  FieldId right_current_ee_pose_id_{};
 };
 }  // namespace neuro_policy
 }  // namespace stepit

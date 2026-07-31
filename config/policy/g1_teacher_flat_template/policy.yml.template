@@ -1,0 +1,32 @@
+# Copy this file to policy.yml only after replacing ALL actuator arrays with
+# values frozen from the teacher checkpoint. This template is intentionally not
+# directly runnable: never reuse student PD/bias/action scale for the teacher.
+control_freq: 50
+name: g1_teacher_flat
+trusted: false
+tailored: g1
+
+actuator:
+  type: position
+  Kp: REPLACE_WITH_29_TEACHER_VALUES
+  Kd: REPLACE_WITH_29_TEACHER_VALUES
+  bias: REPLACE_WITH_29_TEACHER_DEFAULT_Q_VALUES
+  scale: REPLACE_WITH_29_TEACHER_ACTION_SCALE_VALUES
+
+default_action: 0.0
+
+modules:
+  - proprioceptor
+  - wbc_command_source
+  - action_history
+  - dummy_heightmap_source
+  - base_lin_vel_source
+  - forward_kinematics
+  - actor
+
+publish_fields:
+  - action
+  - base_lin_vel
+  - heightmap
+  - left_current_ee_pose
+  - right_current_ee_pose

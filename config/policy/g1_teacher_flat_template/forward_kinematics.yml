@@ -1,0 +1,6 @@
+# Copy the exact G1 URDF used by the training model to the policy bundle as
+# robot.urdf. The teacher was trained against wrist-yaw link poses in pelvis.
+urdf_path: robot.urdf
+anchor_body: pelvis
+left_ee_frame: left_wrist_yaw_link
+right_ee_frame: right_wrist_yaw_link

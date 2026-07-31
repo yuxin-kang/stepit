@@ -1,0 +1,8 @@
+# base_lin_vel_b for the teacher. nav_msgs/Odometry twist is conventionally
+# expressed in child_frame_id, i.e. the robot/base frame.
+base_lin_vel_subscriber:
+  topic: "/odometry"
+  topic_type: "nav_msgs/msg/Odometry"
+  qos: {reliability: "best_effort", durability: "volatile", history: "keep_last"}
+  velocity_frame: "body"
+  timeout_threshold: 0.25

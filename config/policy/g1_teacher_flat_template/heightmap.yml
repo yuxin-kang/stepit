@@ -1,0 +1,6 @@
+# Flat sim2sim teacher input: 17 x 15 local elevations, continuously zero.
+# dummy_heightmap_source constructs the grid only to determine its size; it
+# does not subscribe to any map or scanner and always provides zeros.
+dimension: [17, 15]
+grid_size: [0.1, 0.1]
+x_major: true

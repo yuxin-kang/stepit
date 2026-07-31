@@ -1,0 +1,37 @@
+# Teacher actor ABI. The exported actor.onnx must use these exact names and
+# shapes: observation [1,1,391], hidden/cell [1,512], action [1,1,29].
+input_names:
+  - observation
+  - memory_in__hidden
+  - memory_in__cell
+
+output_names:
+  - action
+  - memory_out__hidden
+  - memory_out__cell
+
+recurrent_params:
+  - [memory_in__hidden, memory_out__hidden]
+  - [memory_in__cell, memory_out__cell]
+
+nnrt_factory: onnxruntime
+model_path: actor.onnx
+
+# 391D teacher observation ABI. Do not reorder these fields.
+input_fields:
+  observation:
+    - {name: base_lin_vel, size: 3}
+    - {name: ang_vel, size: 3}
+    - {name: gravity, size: 3}
+    - {name: wbc_command, size: 22}
+    - {name: joint_pos, size: 29}
+    - {name: joint_vel, size: 29}
+    - {name: last_action, size: 29}
+    - {name: heightmap, size: 255}
+    - {name: left_current_ee_pose, size: 9}
+    - {name: right_current_ee_pose, size: 9}
+
+output_fields:
+  - {name: action, size: 29}
+
+assert_all_finite: true
