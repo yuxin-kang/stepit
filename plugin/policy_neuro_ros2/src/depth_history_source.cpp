@@ -20,6 +20,15 @@ DepthHistorySource::DepthHistorySource(const NeuroPolicySpec &policy_spec, const
   subscriber_cfg["crop_bottom"].to(crop_bottom_, true);
   subscriber_cfg["crop_left"].to(crop_left_, true);
   subscriber_cfg["crop_right"].to(crop_right_, true);
+  if (subscriber_cfg["history_frames"].hasValue()) {
+    subscriber_cfg["history_frames"].to(history_frames_);
+  }
+  if (subscriber_cfg["policy_height"].hasValue()) {
+    subscriber_cfg["policy_height"].to(policy_height_);
+  }
+  if (subscriber_cfg["policy_width"].hasValue()) {
+    subscriber_cfg["policy_width"].to(policy_width_);
+  }
   subscriber_cfg["min_depth"].to(min_depth_, true);
   subscriber_cfg["max_depth"].to(max_depth_, true);
   subscriber_cfg["gaussian_blur_kernel_size"].to(gaussian_blur_kernel_size_, true);
@@ -29,21 +38,24 @@ DepthHistorySource::DepthHistorySource(const NeuroPolicySpec &policy_spec, const
   STEPIT_ASSERT(raw_height_ > crop_top_ + crop_bottom_ and raw_width_ > crop_left_ + crop_right_,
                 "Depth crop ({}, {}, {}, {}) is invalid for raw size {}x{}.", crop_top_, crop_bottom_, crop_left_,
                 crop_right_, raw_height_, raw_width_);
-  STEPIT_ASSERT(raw_height_ - crop_top_ - crop_bottom_ == kPolicyHeight and
-                    raw_width_ - crop_left_ - crop_right_ == kPolicyWidth,
+  STEPIT_ASSERT(history_frames_ > 0, "history_frames must be positive.");
+  STEPIT_ASSERT(policy_height_ > 0 and policy_width_ > 0, "policy_height and policy_width must be positive.");
+  policy_pixels_ = policy_height_ * policy_width_;
+  STEPIT_ASSERT(raw_height_ - crop_top_ - crop_bottom_ == policy_height_ and
+                    raw_width_ - crop_left_ - crop_right_ == policy_width_,
                 "Depth crop must produce the trained {}x{} image, but raw {}x{} with crop ({}, {}, {}, {}) produces {}x{}.",
-                kPolicyHeight, kPolicyWidth, raw_height_, raw_width_, crop_top_, crop_bottom_, crop_left_, crop_right_,
+                policy_height_, policy_width_, raw_height_, raw_width_, crop_top_, crop_bottom_, crop_left_, crop_right_,
                 raw_height_ - crop_top_ - crop_bottom_, raw_width_ - crop_left_ - crop_right_);
   STEPIT_ASSERT(max_depth_ > min_depth_, "max_depth ({}) must be greater than min_depth ({}).", max_depth_, min_depth_);
   STEPIT_ASSERT(gaussian_blur_kernel_size_ > 0 and gaussian_blur_kernel_size_ % 2 == 1,
                 "gaussian_blur_kernel_size ({}) must be a positive odd number.", gaussian_blur_kernel_size_);
-  STEPIT_ASSERT(gaussian_blur_kernel_size_ <= std::min(kPolicyHeight, kPolicyWidth),
+  STEPIT_ASSERT(gaussian_blur_kernel_size_ <= std::min(policy_height_, policy_width_),
                 "gaussian_blur_kernel_size ({}) exceeds the policy image size {}x{}.", gaussian_blur_kernel_size_,
-                kPolicyHeight, kPolicyWidth);
+                policy_height_, policy_width_);
   STEPIT_ASSERT(gaussian_blur_sigma_ > 0.0F, "gaussian_blur_sigma must be positive.");
   STEPIT_ASSERT(timeout_threshold_ > 0.0F, "timeout_threshold must be positive.");
 
-  depth_history_id_ = registerProvision("depth_history", kHistoryFrames * kPolicyPixels);
+  depth_history_id_ = registerProvision("depth_history", history_frames_ * policy_pixels_);
   if (topic_type == "sensor_msgs/msg/Image") {
     depth_image_sub_ = getNode()->create_subscription<sensor_msgs::msg::Image>(
         topic_, qos, std::bind(&DepthHistorySource::imageCallback, this, std::placeholders::_1));
@@ -61,7 +73,7 @@ bool DepthHistorySource::reset() {
   reported_not_ready_ = false;
   reported_timeout_   = false;
   if (not readyLocked()) {
-    STEPIT_WARN("Depth history is not ready: need {} processed frames from '{}', got {}.", kHistoryFrames, topic_,
+    STEPIT_WARN("Depth history is not ready: need {} processed frames from '{}', got {}.", history_frames_, topic_,
                 history_.size());
     return false;
   }
@@ -77,7 +89,7 @@ bool DepthHistorySource::update(const LowState &, ControlRequests &, FieldMap &c
   std::lock_guard<std::mutex> lock(mutex_);
   if (not readyLocked()) {
     if (not reported_not_ready_) {
-      STEPIT_WARN("Depth history is not ready: need {} processed frames from '{}', got {}.", kHistoryFrames, topic_,
+      STEPIT_WARN("Depth history is not ready: need {} processed frames from '{}', got {}.", history_frames_, topic_,
                   history_.size());
       reported_not_ready_ = true;
     }
@@ -93,9 +105,9 @@ bool DepthHistorySource::update(const LowState &, ControlRequests &, FieldMap &c
     return false;
   }
 
-  ArrXf depth_history{kHistoryFrames * kPolicyPixels};
-  for (std::size_t i{}; i < kHistoryFrames; ++i) {
-    depth_history.segment(static_cast<Eigen::Index>(i * kPolicyPixels), static_cast<Eigen::Index>(kPolicyPixels)) =
+  ArrXf depth_history{history_frames_ * policy_pixels_};
+  for (std::size_t i{}; i < history_frames_; ++i) {
+    depth_history.segment(static_cast<Eigen::Index>(i * policy_pixels_), static_cast<Eigen::Index>(policy_pixels_)) =
         history_[i];
   }
   context[depth_history_id_] = std::move(depth_history);
@@ -136,7 +148,7 @@ void DepthHistorySource::acceptProcessedFrame(ArrXf processed) {
   const rclcpp::Time stamp = getNode()->now();
   std::lock_guard<std::mutex> lock(mutex_);
   history_.push_back(std::move(processed));
-  if (history_.size() > kHistoryFrames) history_.pop_front();
+  if (history_.size() > history_frames_) history_.pop_front();
   last_sample_stamp_ = stamp;
   reported_not_ready_ = false;
   reported_timeout_   = false;
@@ -172,7 +184,7 @@ bool DepthHistorySource::processFrame(const std::vector<float> &raw, ArrXf &proc
     if (not std::isfinite(value)) return false;
   }
 
-  processed.resize(kPolicyPixels);
+  processed.resize(policy_pixels_);
   std::size_t output_index{};
   for (std::size_t row = crop_top_; row < raw_height_ - crop_bottom_; ++row) {
     for (std::size_t col = crop_left_; col < raw_width_ - crop_right_; ++col) {
@@ -210,34 +222,34 @@ void DepthHistorySource::applyGaussianBlur(ArrXf &frame) const {
     return index;
   };
 
-  ArrXf horizontal{kPolicyPixels};
-  ArrXf blurred{kPolicyPixels};
-  for (int row{}; row < static_cast<int>(kPolicyHeight); ++row) {
-    for (int col{}; col < static_cast<int>(kPolicyWidth); ++col) {
+  ArrXf horizontal{policy_pixels_};
+  ArrXf blurred{policy_pixels_};
+  for (int row{}; row < static_cast<int>(policy_height_); ++row) {
+    for (int col{}; col < static_cast<int>(policy_width_); ++col) {
       float value{};
       for (int offset = -radius; offset <= radius; ++offset) {
-        const int source_col = reflect(col + offset, static_cast<int>(kPolicyWidth));
+        const int source_col = reflect(col + offset, static_cast<int>(policy_width_));
         value += kernel[static_cast<std::size_t>(offset + radius)] *
-                 frame[static_cast<Eigen::Index>(row * static_cast<int>(kPolicyWidth) + source_col)];
+                 frame[static_cast<Eigen::Index>(row * static_cast<int>(policy_width_) + source_col)];
       }
-      horizontal[static_cast<Eigen::Index>(row * static_cast<int>(kPolicyWidth) + col)] = value;
+      horizontal[static_cast<Eigen::Index>(row * static_cast<int>(policy_width_) + col)] = value;
     }
   }
-  for (int row{}; row < static_cast<int>(kPolicyHeight); ++row) {
-    for (int col{}; col < static_cast<int>(kPolicyWidth); ++col) {
+  for (int row{}; row < static_cast<int>(policy_height_); ++row) {
+    for (int col{}; col < static_cast<int>(policy_width_); ++col) {
       float value{};
       for (int offset = -radius; offset <= radius; ++offset) {
-        const int source_row = reflect(row + offset, static_cast<int>(kPolicyHeight));
+        const int source_row = reflect(row + offset, static_cast<int>(policy_height_));
         value += kernel[static_cast<std::size_t>(offset + radius)] *
-                 horizontal[static_cast<Eigen::Index>(source_row * static_cast<int>(kPolicyWidth) + col)];
+                 horizontal[static_cast<Eigen::Index>(source_row * static_cast<int>(policy_width_) + col)];
       }
-      blurred[static_cast<Eigen::Index>(row * static_cast<int>(kPolicyWidth) + col)] = value;
+      blurred[static_cast<Eigen::Index>(row * static_cast<int>(policy_width_) + col)] = value;
     }
   }
   frame = std::move(blurred);
 }
 
-bool DepthHistorySource::readyLocked() const { return history_.size() == kHistoryFrames; }
+bool DepthHistorySource::readyLocked() const { return history_.size() == history_frames_; }
 
 STEPIT_REGISTER_MODULE(depth_history_source, kDefPriority, Module::make<DepthHistorySource>);
 STEPIT_REGISTER_FIELD_SOURCE(depth_history, kDefPriority, Module::make<DepthHistorySource>);

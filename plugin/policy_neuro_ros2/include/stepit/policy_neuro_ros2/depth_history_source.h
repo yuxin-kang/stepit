@@ -33,10 +33,9 @@ class DepthHistorySource : public Module {
   void applyGaussianBlur(ArrXf &frame) const;
   bool readyLocked() const;
 
-  static constexpr std::size_t kHistoryFrames = 4;
-  static constexpr std::size_t kPolicyHeight  = 18;
-  static constexpr std::size_t kPolicyWidth   = 32;
-  static constexpr std::size_t kPolicyPixels  = kPolicyHeight * kPolicyWidth;
+  static constexpr std::size_t kDefaultHistoryFrames = 4;
+  static constexpr std::size_t kDefaultPolicyHeight  = 18;
+  static constexpr std::size_t kDefaultPolicyWidth   = 32;
 
   FieldId depth_history_id_{};
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr depth_array_sub_;
@@ -48,6 +47,10 @@ class DepthHistorySource : public Module {
   std::size_t crop_bottom_{0};
   std::size_t crop_left_{16};
   std::size_t crop_right_{16};
+  std::size_t history_frames_{kDefaultHistoryFrames};
+  std::size_t policy_height_{kDefaultPolicyHeight};
+  std::size_t policy_width_{kDefaultPolicyWidth};
+  std::size_t policy_pixels_{kDefaultPolicyHeight * kDefaultPolicyWidth};
   float min_depth_{0.0F};
   float max_depth_{2.5F};
   std::size_t gaussian_blur_kernel_size_{1};
