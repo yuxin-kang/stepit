@@ -11,8 +11,9 @@ wbc_command_subscriber:
   neutral_height: 0.8
   min_height: 0.3
   max_height: 0.8
-  # External commands are held at the safe default until the operator presses
-  # LB+Y (L1+Y on the Unitree remote) after enabling the policy with LT+B.
+  # External messages are ignored while joystick mode is active. On LB+Y
+  # (L1+Y on the Unitree remote), the current joystick command is retained as
+  # the initial external target; a publishing gap holds the last valid target.
   default_enabled: false
   # Required pelvis/base-frame targets: position xyz, tangent xyz, normal xyz.
   # Replace with checkpoint-aligned valid hand targets before use.

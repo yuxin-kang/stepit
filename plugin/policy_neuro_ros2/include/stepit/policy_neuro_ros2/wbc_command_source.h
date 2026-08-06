@@ -30,6 +30,8 @@ class WbcCommandSource : public Module {
   void callback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
   bool applyCommand(const std::vector<float> &data);
   void handleCommandRequest(ControlRequest request);
+  void seedExternalCommandFromActive();
+  void seedTeleopFromExternalCommand();
   void handleTeleopRequest(ControlRequest request);
   void resetTeleop();
   void updateTeleopCommand();

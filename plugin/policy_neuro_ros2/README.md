@@ -49,6 +49,12 @@ packet on `teleop_command` and, when configured, a 22D preview on a separate
 `teleop_wbc_command` topic; it must not publish back to the external
 `wbc_command` input topic.
 
+Switching from joystick to external WBC seeds the external command with the
+current joystick-generated 22D target, including height and both hand targets.
+After at least one valid external message arrives, a publishing gap only logs a
+timeout warning: the last valid external command remains active until the mode
+is switched back to joystick.
+
 The equivalent control channel is `Policy/WbcCommand` with
 `EnableSubscriber`, `DisableSubscriber`, or `SwitchSubscriber`.
 
@@ -60,7 +66,7 @@ The equivalent control channel is `Policy/WbcCommand` with
   | Action              | Argument | Description                                      |
   | :------------------ | :------- | :----------------------------------------------- |
   | `EnableSubscriber`  |          | Switches the actor to external 22D WBC.          |
-  | `DisableSubscriber` |          | Returns to joystick teleop, or the safe default. |
+  | `DisableSubscriber` |          | Returns to joystick teleop, or the configured default when teleop is disabled. |
   | `SwitchSubscriber`  |          | Toggles joystick/external WBC control.            |
 
 - Channel: `Policy/CmdVel`

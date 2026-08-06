@@ -165,12 +165,10 @@ bool WbcCommandSource::update(const LowState &, ControlRequests &requests, Field
   }
   if (received_ and getElapsedTime(command_stamp_) > timeout_threshold_) {
     if (not reported_timeout_) {
-      STEPIT_WARN("WBC command from '{}' timed out after {:.3f}s; using neutral height and valid default hand targets.",
-                  topic_, getElapsedTime(command_stamp_));
+      STEPIT_WARN("WBC command from '{}' timed out after {:.3f}s; holding the last valid command.", topic_,
+                  getElapsedTime(command_stamp_));
       reported_timeout_ = true;
     }
-    context[wbc_command_id_] = default_command_;
-    return true;
   }
   context[wbc_command_id_] = external_command_;
   return true;
@@ -194,18 +192,34 @@ void WbcCommandSource::callback(const std_msgs::msg::Float32MultiArray::SharedPt
 
 void WbcCommandSource::handleCommandRequest(ControlRequest request) {
   switch (lookupAction(request.action(), kSubscriberActionMap)) {
-    case SubscriberAction::kEnableSubscriber:
+    case SubscriberAction::kEnableSubscriber: {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (not command_enabled_.load(std::memory_order_relaxed)) {
+        seedExternalCommandFromActive();
+      }
       command_enabled_.store(true, std::memory_order_release);
       request.response(kSuccess);
       STEPIT_LOG(kStartSubscribingTemplate, "external WBC command");
       break;
-    case SubscriberAction::kDisableSubscriber:
+    }
+    case SubscriberAction::kDisableSubscriber: {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (command_enabled_.load(std::memory_order_relaxed)) {
+        seedTeleopFromExternalCommand();
+      }
       command_enabled_.store(false, std::memory_order_release);
       request.response(kSuccess);
       STEPIT_LOG(kStopSubscribingTemplate, "external WBC command");
       break;
+    }
     case SubscriberAction::kSwitchSubscriber: {
+      std::lock_guard<std::mutex> lock(mutex_);
       const bool enabled = not command_enabled_.load(std::memory_order_relaxed);
+      if (enabled) {
+        seedExternalCommandFromActive();
+      } else {
+        seedTeleopFromExternalCommand();
+      }
       command_enabled_.store(enabled, std::memory_order_release);
       request.response(kSuccess);
       STEPIT_LOG(enabled ? kStartSubscribingTemplate : kStopSubscribingTemplate, "external WBC command");
@@ -215,6 +229,39 @@ void WbcCommandSource::handleCommandRequest(ControlRequest request) {
       request.response(kUnrecognizedRequest);
       break;
   }
+}
+
+void WbcCommandSource::seedExternalCommandFromActive() {
+  // Preserve the exact joystick hand targets, height, and velocity as the
+  // initial external command. A new ROS2 message can replace it on the next
+  // callback, but the mode switch itself is continuous.
+  external_command_ = command_;
+  left_hold_ = command_.segment(static_cast<Eigen::Index>(kLeftOffset), static_cast<Eigen::Index>(kPoseSize));
+  right_hold_ = command_.segment(static_cast<Eigen::Index>(kRightOffset), static_cast<Eigen::Index>(kPoseSize));
+  received_         = false;
+  reported_timeout_ = false;
+}
+
+void WbcCommandSource::seedTeleopFromExternalCommand() {
+  base_command_[3] = external_command_[3];
+  float xy_scale = 1.0F;
+  float yaw_scale = 1.0F;
+  if (height_velocity_scaling_enabled_) {
+    float ratio = (base_command_[3] - height_velocity_min_) / (height_velocity_full_speed_ - height_velocity_min_);
+    ratio       = std::clamp(ratio, 0.0F, 1.0F);
+    const float shaped = std::pow(ratio, height_velocity_scale_power_);
+    xy_scale = height_velocity_xy_min_scale_ + (1.0F - height_velocity_xy_min_scale_) * shaped;
+    yaw_scale = height_velocity_yaw_min_scale_ + (1.0F - height_velocity_yaw_min_scale_) * shaped;
+  }
+  base_command_[0] = xy_scale > 0.0F ? external_command_[0] / xy_scale : 0.0F;
+  base_command_[1] = xy_scale > 0.0F ? external_command_[1] / xy_scale : 0.0F;
+  base_command_[2] = yaw_scale > 0.0F ? external_command_[2] / yaw_scale : 0.0F;
+  teleop_left_target_ =
+      external_command_.segment(static_cast<Eigen::Index>(kLeftOffset), static_cast<Eigen::Index>(kPoseSize));
+  teleop_right_target_ =
+      external_command_.segment(static_cast<Eigen::Index>(kRightOffset), static_cast<Eigen::Index>(kPoseSize));
+  arm_axes_.setZero();
+  teleop_stamp_ = getNode()->now();
 }
 
 bool WbcCommandSource::applyCommand(const std::vector<float> &data) {
