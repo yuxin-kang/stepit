@@ -35,6 +35,9 @@ sudo apt install ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-grid-map-ros
 - `depth_history_source`: subscribes to a continuous `sensor_msgs/msg/Image` (`32FC1`) or `std_msgs/msg/Float32MultiArray` raw depth stream and provides `depth_history` (2304D). Each received frame is cropped, clipped, and normalized before entering the source-owned four-frame history cache. The policy starts only when four valid, fresh frames have already been buffered; output order is oldest to newest. The deployed G1 depth-student contract is raw 64x36 -> crop `(top=18, bottom=0, left=16, right=16)` -> clip `[0, 2.5]` -> normalize `[0, 1]` -> 18x32.
 - `wbc_command_source`: subscribes to one 22D `std_msgs/msg/Float32MultiArray` and provides `wbc_command` in the order `[vx, vy, wz, base_height, left_pose_9d, right_pose_9d]`. Height is absolute metres and clamped to the configured `[0.3, 0.8]` range. Hand poses are pelvis/base-frame position + tangent + normal. A missing hand is exactly nine `NaN` values and holds the most recent valid target; zero poses are not used.
 
+完整的中文话题、22D 布局和发布命令示例见
+[`doc/wbc_command_zh.md`](../../doc/wbc_command_zh.md)。
+
 For joystick/external switching, set `teleop.enabled: true` and
 `wbc_command_subscriber.default_enabled: false`. The policy starts in joystick
 teleop mode. It still receives and validates `/wbc_command`, but does not use
