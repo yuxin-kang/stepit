@@ -5,6 +5,7 @@
 #include <Eigen/Geometry>
 
 #include <stepit/agent.h>
+#include <stepit/policy_neuro/subscriber_action.h>
 #include <stepit/policy_neuro_ros2/wbc_command_source.h>
 #include <stepit/ros2/node.h>
 
@@ -20,6 +21,7 @@ WbcCommandSource::WbcCommandSource(const NeuroPolicySpec &policy_spec, const Mod
   subscriber_cfg["min_height"].to(min_height_, true);
   subscriber_cfg["max_height"].to(max_height_, true);
   subscriber_cfg["timeout_threshold"].to(timeout_threshold_, true);
+  subscriber_cfg["default_enabled"].to(default_command_enabled_, true);
   STEPIT_ASSERT(min_height_ <= neutral_height_ and neutral_height_ <= max_height_,
                 "neutral_height ({}) must be within [{}, {}].", neutral_height_, min_height_, max_height_);
   STEPIT_ASSERT(max_height_ > min_height_, "max_height ({}) must be greater than min_height ({}).", max_height_,
@@ -41,6 +43,7 @@ WbcCommandSource::WbcCommandSource(const NeuroPolicySpec &policy_spec, const Mod
   default_command_[3] = neutral_height_;
   default_command_.segment(static_cast<Eigen::Index>(kLeftOffset), static_cast<Eigen::Index>(kPoseSize)) = left_hold_;
   default_command_.segment(static_cast<Eigen::Index>(kRightOffset), static_cast<Eigen::Index>(kPoseSize)) = right_hold_;
+  external_command_ = default_command_;
   command_ = default_command_;
 
   wbc_command_id_ = registerProvision("wbc_command", kCommandSize);
@@ -94,7 +97,14 @@ WbcCommandSource::WbcCommandSource(const NeuroPolicySpec &policy_spec, const Mod
     STEPIT_ASSERT(packet_type == "std_msgs/msg/Float32MultiArray" and wbc_type == "std_msgs/msg/Float32MultiArray",
                   "teleop packet and WBC publishers must use std_msgs/msg/Float32MultiArray.");
     teleop_packet_pub_ = getNode()->create_publisher<std_msgs::msg::Float32MultiArray>(packet_topic, packet_qos);
-    teleop_wbc_pub_    = getNode()->create_publisher<std_msgs::msg::Float32MultiArray>(wbc_topic, wbc_qos);
+    if (wbc_topic == topic_) {
+      STEPIT_WARN(
+          "teleop.wbc_publisher topic '{}' matches the external WBC subscriber; disabling the preview publisher to "
+          "prevent command feedback. Use a separate topic such as 'teleop_wbc_command'.",
+          wbc_topic);
+    } else {
+      teleop_wbc_pub_ = getNode()->create_publisher<std_msgs::msg::Float32MultiArray>(wbc_topic, wbc_qos);
+    }
     timestep_          = 1.0F / static_cast<float>(policy_spec.control_freq);
   }
 }
@@ -102,18 +112,30 @@ WbcCommandSource::WbcCommandSource(const NeuroPolicySpec &policy_spec, const Mod
 bool WbcCommandSource::reset() {
   std::lock_guard<std::mutex> lock(mutex_);
   reported_timeout_ = false;
+  command_enabled_.store(default_command_enabled_, std::memory_order_release);
+  external_command_ = default_command_;
+  command_          = default_command_;
+  received_         = false;
+  joystick_rules_.clear();
   if (teleop_enabled_) {
     resetTeleop();
-    joystick_rules_.clear();
     joystick_rules_.emplace_back([this](const joystick::State &js) -> std::string {
       // Preserve StepIt's trigger-modified Agent controls (stand/policy/etc.).
-      if (js.lt() > 0.9F) return "";
+      // LB+A is reserved for switching between joystick and external WBC;
+      // do not also interpret its A press as a teleop arm-mode toggle.
+      if (js.lt() > 0.9F or js.LB().pressed) return "";
       return fmt::format("Policy/WbcTeleop/Input:{},{},{},{},{},{},{},{},{},{}", js.las_x(), js.las_y(), js.ras_x(),
                          js.ras_y(), static_cast<int>(js.Left().pressed), static_cast<int>(js.Right().pressed),
                          static_cast<int>(js.Up().on_press), static_cast<int>(js.Down().on_press),
                          static_cast<int>(js.A().on_press), static_cast<int>(js.X().on_press));
     });
   }
+  // L1+A switches between joystick teleop and the external 22D ROS2 command.
+  joystick_rules_.emplace_back([](const joystick::State &js) -> std::string {
+    return js.LB().pressed and js.A().on_press ? "Policy/WbcCommand/SwitchSubscriber" : "";
+  });
+  STEPIT_INFO("WBC control starts in {} mode; LB+A toggles joystick and external ROS2 commands.",
+              teleop_enabled_ and not default_command_enabled_ ? "joystick teleop" : "external ROS2");
   return true;
 }
 
@@ -123,24 +145,43 @@ bool WbcCommandSource::update(const LowState &, ControlRequests &requests, Field
       handleTeleopRequest(std::move(request));
     }
   }
+  for (auto &&request : requests.filterByChannel("Policy/WbcCommand")) {
+    handleCommandRequest(std::move(request));
+  }
 
   std::lock_guard<std::mutex> lock(mutex_);
-  if (teleop_enabled_) {
+  const bool external_enabled = command_enabled_.load(std::memory_order_acquire);
+  if (teleop_enabled_ and not external_enabled) {
     updateTeleopCommand();
     publishTeleopCommand();
-  } else if (received_ and getElapsedTime(command_stamp_) > timeout_threshold_) {
+    context[wbc_command_id_] = command_;
+    return true;
+  }
+  if (not external_enabled) {
+    // Receiving a message is intentionally independent from approval. This
+    // keeps the latest valid command ready, but never exposes it to the actor
+    // before the operator presses L1+A.
+    reported_timeout_ = false;
+    context[wbc_command_id_] = default_command_;
+    return true;
+  }
+  if (received_ and getElapsedTime(command_stamp_) > timeout_threshold_) {
     if (not reported_timeout_) {
       STEPIT_WARN("WBC command from '{}' timed out after {:.3f}s; using neutral height and valid default hand targets.",
                   topic_, getElapsedTime(command_stamp_));
       reported_timeout_ = true;
     }
-    command_ = default_command_;
+    context[wbc_command_id_] = default_command_;
+    return true;
   }
-  context[wbc_command_id_] = command_;
+  context[wbc_command_id_] = external_command_;
   return true;
 }
 
-void WbcCommandSource::exit() { joystick_rules_.clear(); }
+void WbcCommandSource::exit() {
+  command_enabled_.store(false, std::memory_order_release);
+  joystick_rules_.clear();
+}
 
 void WbcCommandSource::callback(const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -148,9 +189,34 @@ void WbcCommandSource::callback(const std_msgs::msg::Float32MultiArray::SharedPt
     STEPIT_WARN("Rejected WBC command from '{}': expected 22 values with finite base command and valid hand poses.", topic_);
     return;
   }
-  command_stamp_     = getNode()->now();
-  received_          = true;
+  command_stamp_    = getNode()->now();
+  received_         = true;
   reported_timeout_ = false;
+}
+
+void WbcCommandSource::handleCommandRequest(ControlRequest request) {
+  switch (lookupAction(request.action(), kSubscriberActionMap)) {
+    case SubscriberAction::kEnableSubscriber:
+      command_enabled_.store(true, std::memory_order_release);
+      request.response(kSuccess);
+      STEPIT_LOG(kStartSubscribingTemplate, "external WBC command");
+      break;
+    case SubscriberAction::kDisableSubscriber:
+      command_enabled_.store(false, std::memory_order_release);
+      request.response(kSuccess);
+      STEPIT_LOG(kStopSubscribingTemplate, "external WBC command");
+      break;
+    case SubscriberAction::kSwitchSubscriber: {
+      const bool enabled = not command_enabled_.load(std::memory_order_relaxed);
+      command_enabled_.store(enabled, std::memory_order_release);
+      request.response(kSuccess);
+      STEPIT_LOG(enabled ? kStartSubscribingTemplate : kStopSubscribingTemplate, "external WBC command");
+      break;
+    }
+    default:
+      request.response(kUnrecognizedRequest);
+      break;
+  }
 }
 
 bool WbcCommandSource::applyCommand(const std::vector<float> &data) {
@@ -166,16 +232,16 @@ bool WbcCommandSource::applyCommand(const std::vector<float> &data) {
     return false;
   }
 
-  command_.head<3>() = Eigen::Map<const Arr3f>(data.data());
-  command_[3]        = std::clamp(data[3], min_height_, max_height_);
+  external_command_.head<3>() = Eigen::Map<const Arr3f>(data.data());
+  external_command_[3]        = std::clamp(data[3], min_height_, max_height_);
   if (not left_missing) {
     for (std::size_t i{}; i < kPoseSize; ++i) left_hold_[static_cast<Eigen::Index>(i)] = data[kLeftOffset + i];
   }
   if (not right_missing) {
     for (std::size_t i{}; i < kPoseSize; ++i) right_hold_[static_cast<Eigen::Index>(i)] = data[kRightOffset + i];
   }
-  command_.segment(static_cast<Eigen::Index>(kLeftOffset), static_cast<Eigen::Index>(kPoseSize)) = left_hold_;
-  command_.segment(static_cast<Eigen::Index>(kRightOffset), static_cast<Eigen::Index>(kPoseSize)) = right_hold_;
+  external_command_.segment(static_cast<Eigen::Index>(kLeftOffset), static_cast<Eigen::Index>(kPoseSize)) = left_hold_;
+  external_command_.segment(static_cast<Eigen::Index>(kRightOffset), static_cast<Eigen::Index>(kPoseSize)) = right_hold_;
   return true;
 }
 
@@ -285,7 +351,7 @@ void WbcCommandSource::publishTeleopCommand() {
 
   std_msgs::msg::Float32MultiArray wbc;
   wbc.data.assign(command_.data(), command_.data() + command_.size());
-  teleop_wbc_pub_->publish(wbc);
+  if (teleop_wbc_pub_) teleop_wbc_pub_->publish(wbc);
 }
 
 float WbcCommandSource::applyDeadzone(float value, float deadzone) {

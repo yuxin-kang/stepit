@@ -11,13 +11,18 @@ wbc_command_subscriber:
   neutral_height: 0.8
   min_height: 0.3
   max_height: 0.8
+  # External commands are held at the safe default until the operator presses
+  # LB+A (L1+A on the Unitree remote) after enabling the policy with LT+B.
+  default_enabled: false
   # Required pelvis/base-frame targets: position xyz, tangent xyz, normal xyz.
   # Replace with checkpoint-aligned valid hand targets before use.
   default_left_pose: []
   default_right_pose: []
 
-# Optional training-compatible joystick bridge. It publishes the intermediate
-# 12D packet and the resulting 22D WBC target. A switches locomotion/arm mode;
+# Optional training-compatible joystick bridge. The policy starts in this mode
+# when enabled. L1+A switches between this mode and the external 22D command;
+# the bridge WBC preview uses a separate topic to avoid feeding back into the
+# external command subscriber.
 # X switches left/right hand; D-pad vertical changes height in locomotion mode
 # and pitch in arm mode.
 teleop:
@@ -42,6 +47,6 @@ teleop:
     topic_type: "std_msgs/msg/Float32MultiArray"
     qos: {reliability: "best_effort", durability: "volatile", history: "keep_last"}
   wbc_publisher:
-    topic: "wbc_command"
+    topic: "teleop_wbc_command"
     topic_type: "std_msgs/msg/Float32MultiArray"
     qos: {reliability: "best_effort", durability: "volatile", history: "keep_last"}

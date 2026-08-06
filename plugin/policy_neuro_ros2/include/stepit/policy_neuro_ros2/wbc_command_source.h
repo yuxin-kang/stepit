@@ -1,8 +1,9 @@
 #ifndef STEPIT_NEURO_POLICY_ROS2_WBC_COMMAND_SOURCE_H_
 #define STEPIT_NEURO_POLICY_ROS2_WBC_COMMAND_SOURCE_H_
 
-#include <cstddef>
+#include <atomic>
 #include <array>
+#include <cstddef>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -28,6 +29,7 @@ class WbcCommandSource : public Module {
  private:
   void callback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
   bool applyCommand(const std::vector<float> &data);
+  void handleCommandRequest(ControlRequest request);
   void handleTeleopRequest(ControlRequest request);
   void resetTeleop();
   void updateTeleopCommand();
@@ -54,6 +56,9 @@ class WbcCommandSource : public Module {
   float min_height_{0.3F};
   float max_height_{0.8F};
   float timeout_threshold_{0.25F};
+  bool default_command_enabled_{false};
+  // false: joystick teleop (when configured), true: external ROS2 WBC.
+  std::atomic<bool> command_enabled_{false};
 
   // Training-side LocoManiRawJs protocol.  The raw 12D packet is
   // [arm_mode, active_hand, vx, vy, wz, height, dx, dy, dz, droll, dpitch, dyaw].
@@ -86,6 +91,7 @@ class WbcCommandSource : public Module {
 
   std::mutex mutex_;
   ArrXf default_command_{ArrXf::Zero(kCommandSize)};
+  ArrXf external_command_{ArrXf::Zero(kCommandSize)};
   ArrXf command_{ArrXf::Zero(kCommandSize)};
   ArrXf left_hold_{ArrXf::Zero(kPoseSize)};
   ArrXf right_hold_{ArrXf::Zero(kPoseSize)};

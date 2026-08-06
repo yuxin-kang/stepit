@@ -35,8 +35,30 @@ sudo apt install ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-grid-map-ros
 - `depth_history_source`: subscribes to a continuous `sensor_msgs/msg/Image` (`32FC1`) or `std_msgs/msg/Float32MultiArray` raw depth stream and provides `depth_history` (2304D). Each received frame is cropped, clipped, and normalized before entering the source-owned four-frame history cache. The policy starts only when four valid, fresh frames have already been buffered; output order is oldest to newest. The deployed G1 depth-student contract is raw 64x36 -> crop `(top=18, bottom=0, left=16, right=16)` -> clip `[0, 2.5]` -> normalize `[0, 1]` -> 18x32.
 - `wbc_command_source`: subscribes to one 22D `std_msgs/msg/Float32MultiArray` and provides `wbc_command` in the order `[vx, vy, wz, base_height, left_pose_9d, right_pose_9d]`. Height is absolute metres and clamped to the configured `[0.3, 0.8]` range. Hand poses are pelvis/base-frame position + tangent + normal. A missing hand is exactly nine `NaN` values and holds the most recent valid target; zero poses are not used.
 
+For joystick/external switching, set `teleop.enabled: true` and
+`wbc_command_subscriber.default_enabled: false`. The policy starts in joystick
+teleop mode. It still receives and validates `/wbc_command`, but does not use
+it until the operator presses `LB+A` (`L1+A` on the Unitree remote). Pressing
+the same combination toggles back to joystick teleop. `LT+B` (`L2+B`) remains
+the separate Agent policy on/off control. Set `teleop.enabled: false` only for
+an external-command-only deployment. The joystick bridge publishes its 12D
+packet on `teleop_command` and, when configured, a 22D preview on a separate
+`teleop_wbc_command` topic; it must not publish back to the external
+`wbc_command` input topic.
+
+The equivalent control channel is `Policy/WbcCommand` with
+`EnableSubscriber`, `DisableSubscriber`, or `SwitchSubscriber`.
+
 
 ### Control Commands
+
+- Channel: `Policy/WbcCommand`
+
+  | Action              | Argument | Description                                      |
+  | :------------------ | :------- | :----------------------------------------------- |
+  | `EnableSubscriber`  |          | Switches the actor to external 22D WBC.          |
+  | `DisableSubscriber` |          | Returns to joystick teleop, or the safe default. |
+  | `SwitchSubscriber`  |          | Toggles joystick/external WBC control.            |
 
 - Channel: `Policy/CmdVel`
 
@@ -88,6 +110,7 @@ sudo apt install ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-grid-map-ros
 | **LB + A** | `Policy/CmdPitch/SwitchSubscriber`  |
 | **LB + A** | `Policy/CmdHeight/SwitchSubscriber` |
 | **LB + B** | `Policy/Heightmap/SwitchSubscriber` |
+| **LB + A** | `Policy/WbcCommand/SwitchSubscriber` |
 
 
 ### Notes
