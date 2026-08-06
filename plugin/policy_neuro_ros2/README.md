@@ -38,7 +38,7 @@ sudo apt install ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-grid-map-ros
 For joystick/external switching, set `teleop.enabled: true` and
 `wbc_command_subscriber.default_enabled: false`. The policy starts in joystick
 teleop mode. It still receives and validates `/wbc_command`, but does not use
-it until the operator presses `LB+A` (`L1+A` on the Unitree remote). Pressing
+it until the operator presses `LB+Y` (`L1+Y` on the Unitree remote). Pressing
 the same combination toggles back to joystick teleop. `LT+B` (`L2+B`) remains
 the separate Agent policy on/off control. Set `teleop.enabled: false` only for
 an external-command-only deployment. The joystick bridge publishes its 12D
@@ -110,7 +110,7 @@ The equivalent control channel is `Policy/WbcCommand` with
 | **LB + A** | `Policy/CmdPitch/SwitchSubscriber`  |
 | **LB + A** | `Policy/CmdHeight/SwitchSubscriber` |
 | **LB + B** | `Policy/Heightmap/SwitchSubscriber` |
-| **LB + A** | `Policy/WbcCommand/SwitchSubscriber` |
+| **LB + Y** | `Policy/WbcCommand/SwitchSubscriber` |
 
 
 ### Notes

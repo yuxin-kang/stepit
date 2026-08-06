@@ -121,20 +121,18 @@ bool WbcCommandSource::reset() {
     resetTeleop();
     joystick_rules_.emplace_back([this](const joystick::State &js) -> std::string {
       // Preserve StepIt's trigger-modified Agent controls (stand/policy/etc.).
-      // LB+A is reserved for switching between joystick and external WBC;
-      // do not also interpret its A press as a teleop arm-mode toggle.
-      if (js.lt() > 0.9F or js.LB().pressed) return "";
+      if (js.lt() > 0.9F) return "";
       return fmt::format("Policy/WbcTeleop/Input:{},{},{},{},{},{},{},{},{},{}", js.las_x(), js.las_y(), js.ras_x(),
                          js.ras_y(), static_cast<int>(js.Left().pressed), static_cast<int>(js.Right().pressed),
                          static_cast<int>(js.Up().on_press), static_cast<int>(js.Down().on_press),
                          static_cast<int>(js.A().on_press), static_cast<int>(js.X().on_press));
     });
   }
-  // L1+A switches between joystick teleop and the external 22D ROS2 command.
+  // L1+Y switches between joystick teleop and the external 22D ROS2 command.
   joystick_rules_.emplace_back([](const joystick::State &js) -> std::string {
-    return js.LB().pressed and js.A().on_press ? "Policy/WbcCommand/SwitchSubscriber" : "";
+    return js.LB().pressed and js.Y().on_press ? "Policy/WbcCommand/SwitchSubscriber" : "";
   });
-  STEPIT_INFO("WBC control starts in {} mode; LB+A toggles joystick and external ROS2 commands.",
+  STEPIT_INFO("WBC control starts in {} mode; LB+Y toggles joystick and external ROS2 commands.",
               teleop_enabled_ and not default_command_enabled_ ? "joystick teleop" : "external ROS2");
   return true;
 }
@@ -160,7 +158,7 @@ bool WbcCommandSource::update(const LowState &, ControlRequests &requests, Field
   if (not external_enabled) {
     // Receiving a message is intentionally independent from approval. This
     // keeps the latest valid command ready, but never exposes it to the actor
-    // before the operator presses L1+A.
+    // before the operator presses L1+Y.
     reported_timeout_ = false;
     context[wbc_command_id_] = default_command_;
     return true;

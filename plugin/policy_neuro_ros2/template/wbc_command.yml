@@ -12,7 +12,7 @@ wbc_command_subscriber:
   min_height: 0.3
   max_height: 0.8
   # External commands are held at the safe default until the operator presses
-  # LB+A (L1+A on the Unitree remote) after enabling the policy with LT+B.
+  # LB+Y (L1+Y on the Unitree remote) after enabling the policy with LT+B.
   default_enabled: false
   # Required pelvis/base-frame targets: position xyz, tangent xyz, normal xyz.
   # Replace with checkpoint-aligned valid hand targets before use.
@@ -20,7 +20,7 @@ wbc_command_subscriber:
   default_right_pose: []
 
 # Optional training-compatible joystick bridge. The policy starts in this mode
-# when enabled. L1+A switches between this mode and the external 22D command;
+# when enabled. L1+Y switches between this mode and the external 22D command;
 # the bridge WBC preview uses a separate topic to avoid feeding back into the
 # external command subscriber.
 # X switches left/right hand; D-pad vertical changes height in locomotion mode
