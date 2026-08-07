@@ -260,4 +260,5 @@ bool DepthHistorySource::readyLocked() const { return history_.size() == history
 
 STEPIT_REGISTER_MODULE(depth_history_source, kDefPriority, Module::make<DepthHistorySource>);
 STEPIT_REGISTER_FIELD_SOURCE(depth_history, kDefPriority, Module::make<DepthHistorySource>);
+STEPIT_REGISTER_FIELD_SOURCE(depth_sequence_id, kDefPriority, Module::make<DepthHistorySource>);
 }  // namespace stepit::neuro_policy
