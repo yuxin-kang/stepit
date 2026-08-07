@@ -56,6 +56,7 @@ DepthHistorySource::DepthHistorySource(const NeuroPolicySpec &policy_spec, const
   STEPIT_ASSERT(timeout_threshold_ > 0.0F, "timeout_threshold must be positive.");
 
   depth_history_id_ = registerProvision("depth_history", history_frames_ * policy_pixels_);
+  depth_sequence_id_ = registerProvision("depth_sequence_id", 1);
   if (topic_type == "sensor_msgs/msg/Image") {
     depth_image_sub_ = getNode()->create_subscription<sensor_msgs::msg::Image>(
         topic_, qos, std::bind(&DepthHistorySource::imageCallback, this, std::placeholders::_1));
@@ -111,6 +112,11 @@ bool DepthHistorySource::update(const LowState &, ControlRequests &, FieldMap &c
         history_[i];
   }
   context[depth_history_id_] = std::move(depth_history);
+  // This is the camera-frame counter, not a control-loop counter.  It stays
+  // unchanged while the same depth frame is reused at the faster policy rate.
+  // The training-side value is float32, so the uint64 counter is converted at
+  // the ABI boundary just like sensor.frame was during export.
+  context[depth_sequence_id_] = Arr1f{static_cast<float>(depth_sequence_id_value_)};
   reported_not_ready_        = false;
   reported_timeout_          = false;
   return true;
@@ -149,6 +155,7 @@ void DepthHistorySource::acceptProcessedFrame(ArrXf processed) {
   std::lock_guard<std::mutex> lock(mutex_);
   history_.push_back(std::move(processed));
   if (history_.size() > history_frames_) history_.pop_front();
+  ++depth_sequence_id_value_;
   last_sample_stamp_ = stamp;
   reported_not_ready_ = false;
   reported_timeout_   = false;

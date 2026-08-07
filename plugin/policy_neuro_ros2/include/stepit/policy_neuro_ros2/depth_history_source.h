@@ -2,6 +2,7 @@
 #define STEPIT_NEURO_POLICY_ROS2_DEPTH_HISTORY_SOURCE_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <mutex>
@@ -38,6 +39,7 @@ class DepthHistorySource : public Module {
   static constexpr std::size_t kDefaultPolicyWidth   = 32;
 
   FieldId depth_history_id_{};
+  FieldId depth_sequence_id_{};
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr depth_array_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_image_sub_;
   std::string topic_{"/depth_camera"};
@@ -59,6 +61,9 @@ class DepthHistorySource : public Module {
 
   mutable std::mutex mutex_;
   std::deque<ArrXf> history_;
+  // Counts accepted camera frames.  The actor compares this value with its
+  // recurrent state to decide whether to run the depth encoder again.
+  std::uint64_t depth_sequence_id_value_{0};
   rclcpp::Time last_sample_stamp_{0, 0, RCL_ROS_TIME};
   std::size_t invalid_frame_count_{0};
   bool reported_not_ready_{false};
